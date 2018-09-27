@@ -3,15 +3,37 @@
 #
 import datetime
 import json
+from functools import wraps
 
 import etcd3
-import utils
-from cfgm_common.exceptions import NoIdError
+from etcd3.exceptions import ConnectionFailedError
 
+from cfgm_common.exceptions import DatabaseUnavailableError, NoIdError
+from pysandesh.gen_py.sandesh.ttypes import SandeshLevel
 from vnc_api import vnc_api
 from pysandesh.connection_info import ConnectionState
 from pysandesh.gen_py.process_info.ttypes import ConnectionStatus
 from pysandesh.gen_py.process_info.ttypes import ConnectionType as ConnType
+import utils
+
+
+def _handle_conn_error(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        start_time = datetime.datetime.now()
+        try:
+            return func(self, *args, **kwargs)
+        except ConnectionFailedError as exc:
+            if self._logger:
+                msg = 'etcd connection down. Exception in {}'.format(str(func))
+                self._logger(msg, level=SandeshLevel.SYS_ERR)
+            raise DatabaseUnavailableError(
+                'Error, %s: %s' % (str(exc), utils.detailed_traceback()))
+        finally:
+            if self.log_response_time:
+                end_time = datetime.datetime.now()
+                self.log_response_time(end_time - start_time)
+    return wrapper
 
 
 class VncEtcdClient(object):
@@ -79,8 +101,7 @@ class VncEtcd(VncEtcdClient):
         key_prefix = self._key_prefix(obj_type)
         return "{prefix}/{id}".format(prefix=key_prefix, id=obj_id)
 
-    # TODO: handle_exception decorator
-
+    @_handle_conn_error
     def object_read(self, obj_type, obj_uuids, field_names=None,
                     ret_readonly=False):
         """Read objects from etcd.
@@ -124,6 +145,7 @@ class VncEtcd(VncEtcdClient):
             raise NoIdError(obj_uuids[0])
         return True, results
 
+    @_handle_conn_error
     def object_all(self, obj_type):
         """Get all objects for given type.
 
@@ -134,6 +156,7 @@ class VncEtcd(VncEtcdClient):
         response = self._client.get_prefix(key)
         return (json.loads(resp[0]) for resp in response)
 
+    @_handle_conn_error
     def object_list(self, obj_type, parent_uuids=None, back_ref_uuids=None,
                     obj_uuids=None, count=False, filters=None,
                     paginate_start=None, paginate_count=None):
