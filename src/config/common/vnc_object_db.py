@@ -46,7 +46,7 @@ class VncObjectDBClient(object):
 
 class VncObjectEtcdClient(object):
     def __init__(self, server, prefix, logger,
-                 credential, ssl_enabled, ca_certs):
+                 credential=None, ssl_enabled=None, ca_certs=None):
         server = server.split(':')
         self._object_db = vnc_etcd.VncEtcd(
             host=server[0], port=server[1], prefix=prefix, logger=logger,

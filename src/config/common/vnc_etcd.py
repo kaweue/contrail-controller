@@ -59,7 +59,7 @@ class VncEtcdClient(object):
             kwargs['ca_cert'] = self._credential['ca_cert']
             kwargs['cert_key'] = self._credential['ca_key']
 
-        client = etcd3.client(timeout=2, **kwargs)
+        client = etcd3.client(timeout=5, **kwargs)
         ConnectionState.update(conn_type=ConnType.DATABASE, name='etcd',
                                status=ConnectionStatus.UP, message='',
                                server_addrs='{}:{}'.format(self._host,
@@ -120,29 +120,27 @@ class VncEtcd(VncEtcdClient):
         if not obj_uuids:
             return True, results
 
-        with self._client.lock(obj_type) as lock:
-            for uuid in obj_uuids:
-                key = self._key_obj(obj_type, uuid)
-                if ret_readonly is True and key in self._obj_cache:
-                    record = self._obj_cache[key]
-                    resource = record.resource
-                else:
-                    resource, kv_meta = self._client.get(key)
-                    if resource is None:
-                        # There is no data in etcd, go to next uuid
-                        continue
-
-                    resource = json.loads(resource)
-                    record = EtcdCache.Record(resource=resource,
-                                              kv_meta=kv_meta)
-                    self._obj_cache[key] = record
-
-                if field_names is None:
-                    results.append(resource)
-                else:
-                    results.append({k: v for k, v in resource.items()
-                                    if k in field_names})
-                lock.refresh()
+       # with self._client.lock(obj_type) as lock:
+        for uuid in obj_uuids:
+            key = self._key_obj(obj_type, uuid)
+            if ret_readonly is True and key in self._obj_cache:
+                record = self._obj_cache[key]
+                resource = record.resource
+            else:
+                resource, kv_meta = self._client.get(key)
+                if resource is None:
+                    # There is no data in etcd, go to next uuid
+                    continue
+                resource = json.loads(resource)
+                record = EtcdCache.Record(resource=resource,
+                                          kv_meta=kv_meta)
+                self._obj_cache[key] = record
+            if field_names is None:
+                results.append(resource)
+            else:
+                results.append({k: v for k, v in resource.items()
+                                if k in field_names})
+        #        lock.refresh()
 
         if not results:
             raise NoIdError(obj_uuids[0])
@@ -185,7 +183,8 @@ class VncEtcd(VncEtcdClient):
             obj_class = self._db_client_mgr.get_resource_class(obj_type)
         else:
             obj_class = getattr(vnc_api, utils.CamelCase(obj_type))
-        filters = [f for f in filters if f in obj_class.prop_fields]
+        if filters is not None:
+            filters = [f for f in filters if f in obj_class.prop_fields]
         # end prepare filters
 
         # map obj_type to field in etcd record
@@ -227,7 +226,10 @@ class VncEtcd(VncEtcdClient):
             results, ret_marker = self._paginate(results, paginate_start,
                                                  paginate_count)
 
-        return True, [r['uuid'] for r in results], ret_marker
+        return True, [(True, r['uuid']) for r in results], ret_marker
+
+    def cache_uuid_to_fq_name_add(self, id, fq_name, obj_type):
+        pass
 
     def fq_name_to_uuid(self, obj_type, fq_name):
         fq_name_str = utils.encode_string(':'.join(fq_name))
@@ -264,7 +266,7 @@ class VncEtcd(VncEtcdClient):
             results = self._client.get_prefix(self._prefix)
             record = EtcdCache.Record()
             for result in results:
-                obj = json.loads(result)
+                obj = json.loads(result[0])
                 if obj['uuid'] == uuid:
                     record.resource = obj
                     break

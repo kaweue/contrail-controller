@@ -45,10 +45,8 @@ class KubeNetworkManagerDB(object):
         self._object_db = VncObjectDBClient(**vnc_db)
 
     def _etcd_driver(self, args):
-        server = args.etcd_server.split(':')
         vnc_db = {
-            'host': server[0],
-            'port': server[1],
+            'server': args.etcd_server,
             'prefix': args.etcd_prefix,
             'logger': self._db_logger.log,
         }

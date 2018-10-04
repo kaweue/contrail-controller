@@ -1041,7 +1041,8 @@ class VirtualNetworkKM(DBBaseKM):
             # Get the ipam's attributes.
             ipam_attr = ipam.get('attr', None)
             # Get the ipam fq-name.
-            ipam_fq_name = ipam['to']
+            ipam_fq_name = self._object_db.uuid_to_fq_name(ipam['uuid'])
+            #ipam_fq_name = ipam['to']
             if ipam_attr:
                 # Iterate through ipam subnets to cache uuid - fqname mapping.
                 for subnet in ipam_attr.get('ipam_subnets', []):
@@ -1929,6 +1930,8 @@ class FirewallPolicyKM(DBBaseKM):
         self.annotations = obj.get('annotations', None)
         if self.annotations:
             for kvp in self.annotations['key_value_pair'] or []:
+                if "value" not in kvp:
+                    continue
                 if kvp['key'] == 'tail':
                     self.tail = kvp['value']
                 if kvp['key'] == 'after_tail':
